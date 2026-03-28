@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <title>声记 Scribe</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090806; --surface: #13110e; --surface2: #1e1b16; --border: #2c2820;
+      --text: #ede8df; --muted: #7a7060; --accent: #d49030; --accent-dim: rgba(212,144,48,0.12);
+      --danger: #e04040; --danger-dim: rgba(224,64,64,0.15); --success: #50c080; --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html,body { height:100%; background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:14px; }
+    .app { max-width:640px; margin:0 auto; padding:20px 16px max(24px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:14px; }
+
+    /* HEADER */
+    .header { display:flex; align-items:baseline; gap:10px; border-bottom:1px solid var(--border); padding-bottom:14px; }
+    .header-title { font-family:'Syne',sans-serif; font-weight:800; font-size:22px; color:var(--accent); letter-spacing:-0.5px; }
+    .header-sub { color:var(--muted); font-size:10px; letter-spacing:1.5px; }
+
+    /* HINT */
+    .hint-bar { background:var(--accent-dim); border:1px solid var(--accent); border-radius:var(--radius); padding:10px 14px; font-size:12px; color:var(--accent); line-height:1.7; }
+    .hint-bar a { color:inherit; }
+
+    /* SETTINGS */
+    .setup-panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .setup-toggle { width:100%; padding:11px 14px; background:none; border:none; color:var(--muted); font-family:inherit; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; text-align:left; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+    .setup-toggle:hover { color:var(--text); }
+    .setup-body { padding:0 14px 14px; display:flex; flex-direction:column; gap:12px; }
+    .setup-body.hidden { display:none; }
+    label { font-size:10px; color:var(--muted); letter-spacing:0.5px; display:block; margin-bottom:5px; }
+    input[type="text"],input[type="password"] { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:9px 11px; color:var(--text); font-family:inherit; font-size:13px; outline:none; transition:border-color 0.15s; }
+    input:focus { border-color:var(--accent); }
+    .save-btn { background:var(--accent); color:var(--bg); border:none; border-radius:4px; padding:10px 16px; font-family:inherit; font-weight:500; font-size:11px; letter-spacing:1px; cursor:pointer; }
+
+    /* TABS */
+    .tabs { display:flex; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .tab-btn { flex:1; padding:10px; background:var(--surface); border:none; border-right:1px solid var(--border); color:var(--muted); font-family:inherit; font-size:10px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:all 0.15s; }
+    .tab-btn:last-child { border-right:none; }
+    .tab-btn.active { background:var(--surface2); color:var(--accent); }
+    .tab-panel { display:none; flex-direction:column; gap:14px; }
+    .tab-panel.active { display:flex; }
+
+    /* RECORD */
+    .record-panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px 20px 20px; display:flex; flex-direction:column; align-items:center; gap:18px; }
+    .record-btn { width:90px; height:90px; border-radius:50%; border:2px solid var(--border); background:var(--surface2); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.25s; -webkit-appearance:none; }
+    .record-btn::before { content:''; width:34px; height:34px; border-radius:50%; background:var(--danger); transition:all 0.25s; }
+    .record-btn.recording { border-color:var(--danger); box-shadow:0 0 0 6px var(--danger-dim); animation:rpulse 2s ease-in-out infinite; }
+    .record-btn.recording::before { width:22px; height:22px; border-radius:4px; }
+    @keyframes rpulse { 0%,100%{box-shadow:0 0 0 6px var(--danger-dim);}50%{box-shadow:0 0 0 12px var(--danger-dim);} }
+    .record-timer { font-size:30px; font-weight:300; letter-spacing:3px; }
+    .record-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+    .record-label.active { color:var(--danger); }
+    .proc-bar { width:100%; height:2px; background:var(--border); border-radius:1px; overflow:hidden; display:none; }
+    .proc-bar.active { display:block; }
+    .proc-bar-fill { height:100%; background:var(--accent); animation:sweep 1.6s ease-in-out infinite; }
+    @keyframes sweep { 0%{width:0%;margin-left:0%;}50%{width:60%;margin-left:20%;}100%{width:0%;margin-left:100%;} }
+
+    /* UPLOAD */
+    #diarizeFileInput,#groqFileInput { display:none; }
+    .upload-btn { width:100%; background:var(--surface2); border:1px dashed var(--border); border-radius:var(--radius); padding:14px; color:var(--muted); font-family:inherit; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .upload-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .diarize-info { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 13px; font-size:11px; color:var(--muted); line-height:1.8; }
+    .diarize-info strong { color:var(--success); }
+
+    /* QUEUE */
+    .upload-queue { display:flex; flex-direction:column; gap:6px; }
+    .queue-item { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 13px; display:flex; align-items:center; gap:10px; }
+    .queue-name { flex:1; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .queue-status { font-size:10px; letter-spacing:1px; flex-shrink:0; }
+    .queue-status.pending{color:var(--muted);} .queue-status.running{color:var(--accent);} .queue-status.done{color:var(--success);} .queue-status.error{color:var(--danger);}
+
+    /* SPEAKER LEGEND */
+    .spk-legend-wrap { display:none; }
+    .spk-legend-label { font-size:10px; letter-spacing:1.2px; color:var(--muted); margin-bottom:7px; text-transform:uppercase; }
+    .spk-chips { display:flex; flex-wrap:wrap; gap:7px; }
+    .spk-chip { display:flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:4px 12px 4px 8px; cursor:pointer; transition:border-color 0.15s; }
+    .spk-chip:hover { border-color:var(--accent); }
+    .spk-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .spk-chip-label { font-size:11px; color:var(--text); }
+
+    /* TRANSCRIPT */
+    .tx-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+    .tx-title { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); }
+    .tx-actions { display:flex; gap:7px; }
+    .act-btn { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:5px 11px; color:var(--muted); font-family:inherit; font-size:10px; letter-spacing:0.5px; cursor:pointer; transition:all 0.15s; }
+    .act-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .tx-list { display:flex; flex-direction:column; gap:3px; max-height:45vh; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+    .segment { background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--border); border-radius:var(--radius); padding:10px 13px; }
+    .seg-meta { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+    .seg-lang { font-size:9px; padding:2px 6px; background:var(--surface2); border-radius:3px; color:var(--muted); letter-spacing:1px; }
+    .seg-spk { font-family:inherit; font-size:10px; background:none; border:1px solid; border-radius:3px; padding:2px 8px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition:opacity 0.15s; }
+    .seg-spk:hover { opacity:0.7; }
+    .seg-time { margin-left:auto; font-size:9px; color:var(--muted); }
+    .seg-text { font-size:14px; line-height:1.65; color:var(--text); font-weight:300; }
+    .empty-state { text-align:center; padding:36px 20px; color:var(--muted); font-size:12px; line-height:2; }
+
+    /* ANALYZE */
+    .analyze-btn { width:100%; background:none; border:1px solid var(--success); border-radius:var(--radius); padding:13px; color:var(--success); font-family:inherit; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; transition:all 0.2s; display:none; align-items:center; justify-content:center; gap:8px; }
+    .analyze-btn:hover { background:rgba(80,192,128,0.08); }
+    .analyze-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+    /* ANALYSIS */
+    .analysis-panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .analysis-hdr { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    .analysis-htitle { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--success); }
+    .topic-block { border-bottom:1px solid var(--border); padding:14px 16px; }
+    .topic-block:last-child { border-bottom:none; }
+    .topic-name { font-size:13px; font-weight:500; color:var(--accent); margin-bottom:10px; }
+    .topic-view { font-size:12px; line-height:1.7; color:var(--text); margin-bottom:5px; }
+    .topic-view:last-child { margin-bottom:0; }
+    .topic-spk { font-weight:500; margin-right:6px; }
+    .cta-block { background:var(--surface2); border-top:2px solid var(--accent); padding:14px 16px; }
+    .cta-title { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+    .cta-item { display:flex; gap:10px; font-size:12px; line-height:1.6; color:var(--text); margin-bottom:7px; }
+    .cta-item:last-child { margin-bottom:0; }
+    .cta-num { color:var(--accent); flex-shrink:0; font-weight:500; }
+    .analysis-loading { padding:28px 16px; text-align:center; font-size:12px; color:var(--muted); }
+
+    /* MODAL */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:flex-end; justify-content:center; z-index:100; padding:0 16px 40px; }
+    .modal-overlay.hidden { display:none; }
+    .modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; width:100%; max-width:400px; }
+    .modal-title { font-size:10px; color:var(--muted); letter-spacing:1.5px; margin-bottom:12px; }
+    .modal-input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:11px 12px; color:var(--text); font-family:inherit; font-size:15px; outline:none; margin-bottom:10px; }
+    .modal-input:focus { border-color:var(--accent); }
+    .modal-confirm { width:100%; background:var(--accent); border:none; border-radius:4px; padding:11px; color:var(--bg); font-family:inherit; font-size:12px; font-weight:500; cursor:pointer; margin-bottom:8px; }
+    .modal-cancel { width:100%; background:none; border:1px solid var(--border); border-radius:4px; padding:10px; color:var(--muted); font-family:inherit; font-size:11px; cursor:pointer; }
+
+    .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--danger); color:white; padding:10px 18px; border-radius:var(--radius); font-size:12px; max-width:88%; text-align:center; z-index:200; display:none; line-height:1.5; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="header-title">声记 SCRIBE</div>
+    <div class="header-sub">MULTILINGUAL TRANSCRIBER</div>
+  </div>
+
+  <div class="hint-bar" id="apiHint" style="display:none">
+    You need up to 3 free API keys:<br>
+    • <strong>Groq</strong> (live recording): <a href="https://console.groq.com" target="_blank">console.groq.com</a><br>
+    • <strong>AssemblyAI</strong> (upload + auto speaker ID): <a href="https://www.assemblyai.com" target="_blank">assemblyai.com</a><br>
+    • <strong>Anthropic</strong> (AI topic summary): your Claude API key
+  </div>
+
+  <div class="setup-panel">
+    <button class="setup-toggle" onclick="toggleSetup()">
+      <span>⚙ SETTINGS</span><span id="setupChevron">▼</span>
+    </button>
+    <div class="setup-body hidden" id="setupBody">
+      <div>
+        <label>GROQ API KEY — live recording (free at console.groq.com)</label>
+        <input type="password" id="groqKeyInput" placeholder="gsk_..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div>
+        <label>ASSEMBLYAI API KEY — upload + speaker detection (free at assemblyai.com)</label>
+        <input type="password" id="aaiKeyInput" placeholder="assemblyai key..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div>
+        <label>ANTHROPIC API KEY — AI topic analysis + summary</label>
+        <input type="password" id="anthropicKeyInput" placeholder="sk-ant-..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <button class="save-btn" onclick="saveSettings()">SAVE SETTINGS</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-record" onclick="switchTab('record')">🎙 LIVE RECORD</button>
+    <button class="tab-btn" id="tab-upload" onclick="switchTab('upload')">📂 UPLOAD + SPEAKERS</button>
+  </div>
+
+  <!-- LIVE RECORD TAB -->
+  <div class="tab-panel active" id="panel-record">
+    <div class="record-panel">
+      <button class="record-btn" id="recordBtn" onclick="toggleRecording()"></button>
+      <div style="text-align:center">
+        <div class="record-timer" id="recordTimer">00:00</div>
+        <div class="record-label" id="recordLabel">TAP TO RECORD</div>
+      </div>
+      <div class="proc-bar" id="procBar"><div class="proc-bar-fill"></div></div>
+    </div>
+    <input type="file" id="groqFileInput" accept="audio/*,.m4a,.mp3,.wav,.aac" multiple>
+    <button class="upload-btn" onclick="document.getElementById('groqFileInput').click()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      UPLOAD (text only, no speaker ID)
+    </button>
+    <div class="upload-queue" id="groqQueue"></div>
+  </div>
+
+  <!-- UPLOAD + DIARIZE TAB -->
+  <div class="tab-panel" id="panel-upload">
+    <div class="diarize-info">
+      <strong>✓ Auto speaker detection</strong> — identifies each distinct voice as Speaker A, B, C…<br>
+      After transcript loads, tap any speaker label to rename them (Boss, 你, Colleague…).
+    </div>
+    <input type="file" id="diarizeFileInput" accept="audio/*,.m4a,.mp3,.wav,.aac" multiple>
+    <button class="upload-btn" onclick="document.getElementById('diarizeFileInput').click()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      SELECT VOICE MEMOS
+    </button>
+    <div class="upload-queue" id="diarizeQueue"></div>
+  </div>
+
+  <!-- SPEAKER LEGEND -->
+  <div class="spk-legend-wrap" id="spkLegendWrap">
+    <div class="spk-legend-label">Tap a speaker to rename</div>
+    <div class="spk-chips" id="spkChips"></div>
+  </div>
+
+  <!-- TRANSCRIPT -->
+  <div class="tx-header">
+    <div class="tx-title">TRANSCRIPT</div>
+    <div class="tx-actions">
+      <button class="act-btn" onclick="clearAll()">CLEAR</button>
+      <button class="act-btn" onclick="copyAll()">COPY</button>
+      <button class="act-btn" onclick="saveFile()">SAVE</button>
+    </div>
+  </div>
+  <div class="tx-list" id="txList">
+    <div class="empty-state" id="emptyState">
+      Record live or upload Voice Memos.<br>
+      Use the Upload tab for automatic speaker detection.
+    </div>
+  </div>
+
+  <button class="analyze-btn" id="analyzeBtn" onclick="analyzeTranscript()">
+    ✦ AI ANALYSIS — TOPICS · VIEWPOINTS · ACTIONS
+  </button>
+
+  <div id="analysisOut"></div>
+
+</div>
+
+<!-- Rename Speaker Modal -->
+<div class="modal-overlay hidden" id="renameModal" onclick="handleModalBg(event)">
+  <div class="modal">
+    <div class="modal-title" id="renameModalTitle">RENAME SPEAKER</div>
+    <input type="text" class="modal-input" id="renameInput" placeholder="e.g. Boss / 你 / Colleague" autocorrect="off">
+    <button class="modal-confirm" onclick="confirmRename()">RENAME ALL SEGMENTS</button>
+    <button class="modal-cancel" onclick="closeRenameModal()">CANCEL</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════
+// SPEAKER COLORS
+// ═══════════════════════════════
+const SPK_COLORS = ['#d49030','#5090d0','#50c080','#c060a0','#e07840','#60b0c0','#a0a030'];
+const SPK_DIMS   = ['rgba(212,144,48,.14)','rgba(80,144,208,.14)','rgba(80,192,128,.14)','rgba(192,96,160,.14)','rgba(224,120,64,.14)','rgba(96,176,192,.14)','rgba(160,160,48,.14)'];
+
+function spkIdx(raw) { return typeof raw==='string' ? Math.max(0, raw.charCodeAt(0)-65) : (raw||0); }
+function spkColor(raw) { return SPK_COLORS[spkIdx(raw) % SPK_COLORS.length]; }
+function spkDim(raw)   { return SPK_DIMS[spkIdx(raw)   % SPK_DIMS.length];   }
+
+// ═══════════════════════════════
+// STATE
+// ═══════════════════════════════
+const S = {
+  groqKey:'', aaiKey:'', anthropicKey:'',
+  isRecording:false, isProcessing:false,
+  segments:[],       // {id,text,lang,start,rawSpk,source}
+  spkNames:{},       // rawSpk -> displayName  e.g. {A:'Boss'}
+  elapsedSec:0, timerInt:null, chunkTimeout:null,
+  pendingChunks:[], mimeType:'', mr:null, stream:null, segOffset:0,
+  renaming:null,
+};
+
+// ═══════════════════════════════
+// INIT
+// ═══════════════════════════════
+function init() {
+  S.groqKey      = localStorage.getItem('groq_key')      || '';
+  S.aaiKey       = localStorage.getItem('aai_key')       || '';
+  S.anthropicKey = localStorage.getItem('anthropic_key') || '';
+  document.getElementById('groqKeyInput').value      = S.groqKey;
+  document.getElementById('aaiKeyInput').value       = S.aaiKey;
+  document.getElementById('anthropicKeyInput').value = S.anthropicKey;
+  if (!S.groqKey && !S.aaiKey) {
+    document.getElementById('apiHint').style.display = 'block';
+    document.getElementById('setupBody').classList.remove('hidden');
+    document.getElementById('setupChevron').textContent = '▲';
+  }
+  document.getElementById('groqFileInput').addEventListener('change', onGroqFiles);
+  document.getElementById('diarizeFileInput').addEventListener('change', onDiarizeFiles);
+  document.getElementById('renameInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmRename(); });
+}
+
+function toggleSetup() {
+  const b=document.getElementById('setupBody');
+  const h=b.classList.toggle('hidden');
+  document.getElementById('setupChevron').textContent = h?'▼':'▲';
+}
+
+function saveSettings() {
+  const pairs=[['groqKeyInput','groq_key','groqKey'],['aaiKeyInput','aai_key','aaiKey'],['anthropicKeyInput','anthropic_key','anthropicKey']];
+  pairs.forEach(([el,lk,sk])=>{ const v=document.getElementById(el).value.trim(); if(v){S[sk]=v;localStorage.setItem(lk,v);} });
+  document.getElementById('apiHint').style.display='none';
+  document.getElementById('setupBody').classList.add('hidden');
+  document.getElementById('setupChevron').textContent='▼';
+  toast('Settings saved','ok');
+}
+
+function switchTab(t) {
+  ['record','upload'].forEach(id=>{
+    document.getElementById('tab-'+id).classList.toggle('active',id===t);
+    document.getElementById('panel-'+id).classList.toggle('active',id===t);
+  });
+}
+
+// ═══════════════════════════════
+// LIVE RECORDING
+// ═══════════════════════════════
+async function toggleRecording() { S.isRecording ? stopRecording() : await startRecording(); }
+
+async function startRecording() {
+  if (!S.groqKey) { toast('Add your Groq API key in settings.','err'); return; }
+  try { S.stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+  catch { toast('Mic denied. Safari Settings → Websites → Microphone.','err'); return; }
+  const types=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/aac'];
+  S.mimeType = types.find(t=>MediaRecorder.isTypeSupported(t))||'';
+  S.pendingChunks=[]; S.segOffset=0; S.elapsedSec=0; S.isRecording=true;
+  launchRecorder();
+  S.timerInt=setInterval(()=>{ S.elapsedSec++; document.getElementById('recordTimer').textContent=fmt(S.elapsedSec); },1000);
+  updateRecordUI();
+}
+
+function launchRecorder() {
+  S.mr=new MediaRecorder(S.stream,S.mimeType?{mimeType:S.mimeType}:{});
+  S.mr.ondataavailable=e=>{ if(e.data?.size>0) S.pendingChunks.push(e.data); };
+  S.mr.onstop=onChunkStop; S.mr.start();
+  S.chunkTimeout=setTimeout(()=>{ if(S.isRecording&&S.mr?.state==='recording') S.mr.stop(); },10*60*1000);
+}
+
+async function onChunkStop() {
+  if(!S.pendingChunks.length) return;
+  const blob=new Blob(S.pendingChunks,{type:S.mimeType||'audio/mp4'});
+  const capturedOffset=S.segOffset; S.pendingChunks=[]; S.segOffset=S.elapsedSec;
+  if(S.isRecording) launchRecorder();
+  else { S.stream?.getTracks().forEach(t=>t.stop()); updateRecordUI(); }
+  await groqTranscribe(blob,capturedOffset,null);
+}
+
+function stopRecording() {
+  S.isRecording=false; clearTimeout(S.chunkTimeout); clearInterval(S.timerInt);
+  if(S.mr?.state==='recording') S.mr.stop();
+  else { S.stream?.getTracks().forEach(t=>t.stop()); updateRecordUI(); }
+}
+
+// ═══════════════════════════════
+// GROQ TRANSCRIPTION
+// ═══════════════════════════════
+async function groqTranscribe(blob, timeOffset, sourceLabel) {
+  S.isProcessing=true; document.getElementById('procBar').classList.add('active');
+  const bt=blob.type||'';
+  const ext=bt.includes('webm')?'webm':bt.includes('ogg')?'ogg':bt.includes('mp3')?'mp3':bt.includes('wav')?'wav':'m4a';
+  const fd=new FormData();
+  fd.append('file',blob,'audio.'+ext); fd.append('model','whisper-large-v3-turbo');
+  fd.append('response_format','verbose_json'); fd.append('timestamp_granularities[]','segment');
+  try {
+    const res=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{'Authorization':'Bearer '+S.groqKey},body:fd});
+    if(!res.ok){const e=await res.json().catch(()=>{});throw new Error(e?.error?.message||'Groq '+res.status);}
+    const data=await res.json(); const lang=data.language||'auto';
+    (data.segments?.length?data.segments:[{text:data.text,start:0}]).forEach(seg=>{
+      if(seg.text?.trim()) pushSeg({text:seg.text.trim(),lang,start:timeOffset+(seg.start||0),rawSpk:null,source:sourceLabel});
+    });
+    refreshAll();
+  } catch(err){toast('Groq: '+err.message,'err');}
+  finally{S.isProcessing=false;document.getElementById('procBar').classList.remove('active');updateRecordUI();}
+}
+
+let groqQueue=[],groqRunning=false;
+function onGroqFiles(e) {
+  if(!S.groqKey){toast('Add Groq API key in settings.','err');return;}
+  Array.from(e.target.files).forEach(f=>{
+    const id='gq_'+Date.now()+'_'+rnd();
+    groqQueue.push({id,file:f,status:'pending'});
+    addQRow('groqQueue',id,f.name);
+  }); e.target.value='';
+  if(!groqRunning) drainGroq();
+}
+async function drainGroq() {
+  groqRunning=true;
+  while(true){
+    const item=groqQueue.find(i=>i.status==='pending'); if(!item) break;
+    item.status='running'; setQS(item.id,'running','PROCESSING…');
+    try{
+      const chunks=splitF(item.file,24*1024*1024); let off=0;
+      for(let i=0;i<chunks.length;i++){
+        if(chunks.length>1) setQS(item.id,'running',`PART ${i+1}/${chunks.length}`);
+        await groqTranscribe(chunks[i],off,item.file.name);
+        off+=Math.round((chunks[i].size/item.file.size)*estDur(item.file));
+      }
+      item.status='done'; setQS(item.id,'done','DONE ✓');
+    }catch(err){item.status='error';setQS(item.id,'error','ERROR');toast(item.file.name+': '+err.message,'err');}
+  }
+  groqRunning=false;
+}
+
+// ═══════════════════════════════
+// ASSEMBLYAI DIARIZATION
+// ═══════════════════════════════
+let aaiQueue=[],aaiRunning=false;
+
+function onDiarizeFiles(e) {
+  if(!S.aaiKey){toast('Add your AssemblyAI API key in settings.','err');return;}
+  Array.from(e.target.files).forEach(f=>{
+    const id='aq_'+Date.now()+'_'+rnd();
+    aaiQueue.push({id,file:f,status:'pending'});
+    addQRow('diarizeQueue',id,f.name);
+  }); e.target.value='';
+  if(!aaiRunning) drainAai();
+}
+
+async function drainAai() {
+  aaiRunning=true;
+  while(true){
+    const item=aaiQueue.find(i=>i.status==='pending'); if(!item) break;
+    item.status='running'; setQS(item.id,'running','UPLOADING…');
+    try{
+      // 1. Upload audio
+      const upRes=await fetch('https://api.assemblyai.com/v2/upload',{
+        method:'POST',
+        headers:{'Authorization':S.aaiKey,'Content-Type':'application/octet-stream'},
+        body:item.file
+      });
+      const upBody=await upRes.json().catch(()=>({}));
+      if(!upRes.ok) throw new Error('Upload failed ('+upRes.status+'): '+(upBody.error||JSON.stringify(upBody)));
+      const upload_url=upBody.upload_url;
+      if(!upload_url) throw new Error('No upload_url returned. Response: '+JSON.stringify(upBody));
+
+      // 2. Request transcript with speaker diarization
+      setQS(item.id,'running','REQUESTING…');
+      const txRes=await fetch('https://api.assemblyai.com/v2/transcript',{
+        method:'POST',
+        headers:{'Authorization':S.aaiKey,'Content-Type':'application/json'},
+        body:JSON.stringify({audio_url:upload_url,speech_model:"universal-2",speaker_labels:true,language_detection:true})
+      });
+      const txBody=await txRes.json().catch(()=>({}));
+      if(!txRes.ok) throw new Error('Transcript request failed ('+txRes.status+'): '+(txBody.error||JSON.stringify(txBody)));
+      const txId=txBody.id;
+      if(!txId) throw new Error('No transcript ID. Response: '+JSON.stringify(txBody));
+
+      // 3. Poll until complete
+      let result;
+      for(let attempt=0;attempt<150;attempt++){
+        await sleep(4000);
+        const pr=await fetch('https://api.assemblyai.com/v2/transcript/'+txId,{headers:{'Authorization':S.aaiKey}});
+        result=await pr.json();
+        if(result.status==='completed'||result.status==='error') break;
+        const lbl=result.status==='processing'?'PROCESSING…':'QUEUED…';
+        setQS(item.id,'running',lbl);
+      }
+      if(!result) throw new Error('Polling timed out');
+      if(result.status==='error') throw new Error(result.error||'AssemblyAI processing error');
+
+      // 4. Push utterances (fallback to plain text if no diarization)
+      const utterances=result.utterances||[];
+      if(utterances.length){
+        utterances.forEach(u=>{
+          if(u.text?.trim()) pushSeg({text:u.text.trim(),lang:result.language_code||'auto',start:Math.round(u.start/1000),rawSpk:u.speaker,source:item.file.name});
+        });
+      } else if(result.text) {
+        pushSeg({text:result.text,lang:result.language_code||'auto',start:0,rawSpk:null,source:item.file.name});
+      }
+      item.status='done'; setQS(item.id,'done','DONE ✓');
+      refreshAll();
+    }catch(err){
+      item.status='error'; setQS(item.id,'error','ERROR');
+      console.error('AssemblyAI error:',err);
+      toast(err.message,'err');
+    }
+  }
+  aaiRunning=false;
+}
+
+// ═══════════════════════════════
+// SEGMENTS
+// ═══════════════════════════════
+function pushSeg({text,lang,start,rawSpk,source}) {
+  S.segments.push({id:'seg_'+Date.now()+'_'+rnd(),text,lang,start,rawSpk,source});
+}
+function dname(raw) { return raw ? (S.spkNames[raw]||('Speaker '+raw)) : null; }
+function allSpeakers() {
+  const seen=new Set(); S.segments.forEach(s=>{if(s.rawSpk)seen.add(s.rawSpk);});
+  return [...seen].sort();
+}
+
+// ═══════════════════════════════
+// RENDER
+// ═══════════════════════════════
+function refreshAll() { renderLegend(); renderTx(); syncAnalyzeBtn(); }
+
+function syncAnalyzeBtn() {
+  const btn=document.getElementById('analyzeBtn');
+  btn.style.display = S.segments.length ? 'flex' : 'none';
+}
+
+function renderLegend() {
+  const spks=allSpeakers();
+  const wrap=document.getElementById('spkLegendWrap');
+  const chips=document.getElementById('spkChips');
+  if(!spks.length){wrap.style.display='none';return;}
+  wrap.style.display='block'; chips.innerHTML='';
+  spks.forEach(raw=>{
+    const chip=document.createElement('div'); chip.className='spk-chip';
+    chip.onclick=()=>openRenameModal(raw);
+    chip.innerHTML='<div class="spk-dot" style="background:'+spkColor(raw)+'"></div><span class="spk-chip-label">'+esc(dname(raw))+'</span>';
+    chips.appendChild(chip);
+  });
+}
+
+function renderTx() {
+  const list=document.getElementById('txList');
+  const empty=document.getElementById('emptyState');
+  if(!S.segments.length){empty.style.display='block';list.innerHTML='';list.appendChild(empty);return;}
+  empty.style.display='none'; list.innerHTML='';
+  S.segments.forEach(seg=>{
+    const ll={chinese:'ZH',mandarin:'ZH',cantonese:'ZH',english:'EN',malay:'MS'}[seg.lang]||(seg.lang||'?').slice(0,2).toUpperCase();
+    const raw=seg.rawSpk;
+    const col=raw?spkColor(raw):'var(--muted)';
+    const bg =raw?spkDim(raw):'var(--surface)';
+    const el=document.createElement('div'); el.className='segment';
+    el.style.borderLeftColor=raw?spkColor(raw):'var(--border)';
+    el.style.background=bg;
+    const spkBtn=raw?`<button class="seg-spk" style="color:${col};border-color:${col}" onclick="openRenameModal('${esc(raw)}')">${esc(dname(raw))}</button>`:'';
+    const srcTag=seg.source?`<span class="seg-lang" style="border-left:2px solid var(--accent);padding-left:5px" title="${esc(seg.source)}">${esc(seg.source.replace(/\.[^.]+$/,'').slice(0,14))}</span>`:'';
+    el.innerHTML='<div class="seg-meta"><span class="seg-lang">'+ll+'</span>'+srcTag+spkBtn+'<span class="seg-time">'+fmt(seg.start)+'</span></div><div class="seg-text">'+esc(seg.text)+'</div>';
+    list.appendChild(el);
+  });
+  list.scrollTop=list.scrollHeight;
+}
+
+// ═══════════════════════════════
+// RENAME MODAL
+// ═══════════════════════════════
+function openRenameModal(raw) {
+  S.renaming=raw;
+  document.getElementById('renameModalTitle').textContent='RENAME "SPEAKER '+raw+'"';
+  document.getElementById('renameInput').value=S.spkNames[raw]||'';
+  document.getElementById('renameModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('renameInput').focus(),120);
+}
+function closeRenameModal() { document.getElementById('renameModal').classList.add('hidden'); S.renaming=null; }
+function confirmRename() {
+  const v=document.getElementById('renameInput').value.trim();
+  if(S.renaming){ if(v) S.spkNames[S.renaming]=v; else delete S.spkNames[S.renaming]; }
+  closeRenameModal(); refreshAll();
+}
+function handleModalBg(e) { if(e.target.id==='renameModal') closeRenameModal(); }
+
+// ═══════════════════════════════
+// AI ANALYSIS
+// ═══════════════════════════════
+async function analyzeTranscript() {
+  if(!S.anthropicKey){
+    toast('Add your Anthropic API key in settings for AI analysis.','err');
+    document.getElementById('setupBody').classList.remove('hidden');
+    document.getElementById('setupChevron').textContent='▲'; return;
+  }
+  if(!S.segments.length){toast('No transcript yet.','err');return;}
+
+  const btn=document.getElementById('analyzeBtn');
+  btn.disabled=true; btn.textContent='✦ ANALYZING…';
+
+  const out=document.getElementById('analysisOut');
+  out.innerHTML='<div class="analysis-panel"><div class="analysis-loading">Reading conversation…</div></div>';
+
+  const txText=S.segments.map(s=>`[${s.rawSpk?dname(s.rawSpk):'Unknown'}] ${s.text}`).join('\n');
+
+  const prompt=`You are analyzing a meeting transcript. It may be in Chinese, English, or mixed language.
+
+TRANSCRIPT:
+${txText}
+
+Respond ONLY with a valid JSON object in this exact structure (no markdown, no backticks):
+{
+  "topics": [
+    {
+      "title": "Short topic title (max 6 words)",
+      "views": [
+        {"speaker": "Speaker name", "summary": "Their viewpoint in 1-2 sentences"}
+      ]
+    }
+  ],
+  "actions": [
+    "Concrete action item 1",
+    "Concrete action item 2"
+  ]
+}
+
+Rules:
+- Identify 2-5 main topics
+- Per topic, only include speakers who contributed something relevant
+- Summaries should be in English even if the transcript is Chinese
+- Actions must be specific and actionable, not vague
+- JSON only — no other text`;
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':S.anthropicKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1500,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    if(!res.ok){const e=await res.json().catch(()=>{});throw new Error(e?.error?.message||'Anthropic '+res.status);}
+    const data=await res.json();
+    const raw=data.content.find(b=>b.type==='text')?.text||'';
+    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    renderAnalysis(parsed);
+  } catch(err) {
+    out.innerHTML='<div class="analysis-panel"><div class="analysis-loading" style="color:var(--danger)">Analysis failed: '+esc(err.message)+'</div></div>';
+  } finally {
+    btn.disabled=false; btn.textContent='✦ AI ANALYSIS — TOPICS · VIEWPOINTS · ACTIONS';
+  }
+}
+
+function renderAnalysis(data) {
+  let html='<div class="analysis-panel"><div class="analysis-hdr"><span class="analysis-htitle">✦ AI ANALYSIS</span><button class="act-btn" onclick="saveAnalysis()">SAVE</button></div>';
+  (data.topics||[]).forEach(t=>{
+    html+='<div class="topic-block"><div class="topic-name">'+esc(t.title)+'</div>';
+    (t.views||[]).forEach(v=>{
+      const raw=Object.keys(S.spkNames).find(k=>S.spkNames[k]===v.speaker)||null;
+      const col=raw?spkColor(raw):'var(--accent)';
+      html+='<div class="topic-view"><span class="topic-spk" style="color:'+col+'">'+esc(v.speaker)+'</span>'+esc(v.summary)+'</div>';
+    });
+    html+='</div>';
+  });
+  html+='</div>';
+  if(data.actions?.length){
+    html='<div class="analysis-panel"><div class="analysis-hdr"><span class="analysis-htitle">✦ AI ANALYSIS</span><button class="act-btn" onclick="saveAnalysis()">SAVE</button></div>';
+    (data.topics||[]).forEach(t=>{
+      html+='<div class="topic-block"><div class="topic-name">'+esc(t.title)+'</div>';
+      (t.views||[]).forEach(v=>{
+        const raw=Object.keys(S.spkNames).find(k=>S.spkNames[k]===v.speaker)||null;
+        const col=raw?spkColor(raw):'var(--accent)';
+        html+='<div class="topic-view"><span class="topic-spk" style="color:'+col+'">'+esc(v.speaker)+'</span>'+esc(v.summary)+'</div>';
+      });
+      html+='</div>';
+    });
+    html+='<div class="cta-block"><div class="cta-title">☑ Call to Action</div>';
+    data.actions.forEach((a,i)=>{ html+='<div class="cta-item"><span class="cta-num">'+(i+1)+'.</span><span>'+esc(a)+'</span></div>'; });
+    html+='</div></div>';
+  }
+  document.getElementById('analysisOut').innerHTML=html;
+  document.getElementById('analysisOut').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function saveAnalysis() {
+  const el=document.getElementById('analysisOut'); if(!el.innerHTML) return;
+  let txt='声记 SCRIBE — AI Analysis\n'+new Date().toLocaleString()+'\n\n';
+  el.querySelectorAll('.topic-block').forEach(tb=>{
+    txt+='== '+tb.querySelector('.topic-name').textContent+' ==\n';
+    tb.querySelectorAll('.topic-view').forEach(v=>{ txt+=v.textContent+'\n'; });
+    txt+='\n';
+  });
+  const cta=el.querySelector('.cta-block');
+  if(cta){ txt+='== CALL TO ACTION ==\n'; cta.querySelectorAll('.cta-item').forEach(c=>{ txt+=c.textContent.trim()+'\n'; }); }
+  window.open(URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'})),'_blank');
+}
+
+// ═══════════════════════════════
+// EXPORT
+// ═══════════════════════════════
+function getTxText() {
+  if(!S.segments.length) return '';
+  const hdr='声记 SCRIBE — Transcript\n'+new Date().toLocaleString()+'\n\n';
+  return hdr+S.segments.map(s=>{
+    const sp=s.rawSpk?'['+dname(s.rawSpk)+']':'[?]';
+    const lg=(s.lang||'').toLowerCase().includes('chin')||(s.lang||'').toLowerCase().includes('mand')?'ZH':'EN';
+    const src=s.source?' {'+s.source.replace(/\.[^.]+$/,'')+'} ':'';
+    return fmt(s.start)+' '+sp+' ('+lg+')'+src+'\n'+s.text;
+  }).join('\n\n');
+}
+function copyAll() {
+  const t=getTxText(); if(!t){toast('Nothing to copy yet.','err');return;}
+  navigator.clipboard.writeText(t).then(()=>toast('Copied!','ok'));
+}
+function saveFile() {
+  const t=getTxText(); if(!t){toast('Nothing to save yet.','err');return;}
+  window.open(URL.createObjectURL(new Blob([t],{type:'text/plain;charset=utf-8'})),'_blank');
+}
+function clearAll() {
+  if(!S.segments.length) return;
+  if(confirm('Clear all transcript segments?')){
+    S.segments=[]; S.spkNames={};
+    document.getElementById('analysisOut').innerHTML='';
+    refreshAll();
+  }
+}
+
+// ═══════════════════════════════
+// RECORD UI
+// ═══════════════════════════════
+function updateRecordUI() {
+  const btn=document.getElementById('recordBtn'),lbl=document.getElementById('recordLabel');
+  if(S.isRecording){btn.classList.add('recording');lbl.textContent='RECORDING — TAP TO STOP';lbl.classList.add('active');}
+  else{btn.classList.remove('recording');lbl.textContent=S.isProcessing?'PROCESSING...':'TAP TO RECORD';lbl.classList.remove('active');}
+}
+
+// ═══════════════════════════════
+// QUEUE UI
+// ═══════════════════════════════
+function addQRow(cid,id,name) {
+  const q=document.getElementById(cid);
+  const row=document.createElement('div'); row.className='queue-item'; row.id=id;
+  row.innerHTML='<span class="queue-name">'+esc(name)+'</span><span class="queue-status pending" id="qs_'+id+'">QUEUED</span>';
+  q.appendChild(row);
+}
+function setQS(id,cls,txt) {
+  const el=document.getElementById('qs_'+id); if(!el) return;
+  el.className='queue-status '+cls; el.textContent=txt;
+}
+
+// ═══════════════════════════════
+// UTILS
+// ═══════════════════════════════
+function fmt(sec) { const m=Math.floor(sec/60).toString().padStart(2,'0'),s=(Math.floor(sec)%60).toString().padStart(2,'0'); return m+':'+s; }
+function esc(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+function rnd() { return Math.random().toString(36).slice(2,6); }
+function splitF(file,limit) {
+  if(file.size<=limit) return [file];
+  const c=[]; let s=0; while(s<file.size){c.push(file.slice(s,s+limit,file.type));s+=limit;} return c;
+}
+function estDur(file) { return Math.round(file.size/(128*1024/8)/60); }
+
+let toastTimer=null;
+function toast(msg,type) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.style.background=type==='ok'?'var(--success)':'var(--danger)';
+  el.style.display='block'; clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{el.style.display='none';},type==='err'?4500:2000);
+}
+
+init();
+</script>
+</body>
+</html>
